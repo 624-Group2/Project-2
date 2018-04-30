@@ -1,0 +1,36 @@
+Name,Type,MD code,Length,Measurement Type,Modeling Type
+Test Time,EXCLUDED,-9999,8,m/d/yy h:mm Am/Pm,EXCLUDED
+Brand Code,Text,-9999,8,General,Categorical
+Carb Volume,Double,-9999,8,General,Numeric
+Fill Ounces,Double,-9999,8,General,Numeric
+PC Volume,Double,-9999,8,General,Numeric
+Carb Pressure,Double,-9999,8,General,Numeric
+Carb Temp,Double,-9999,8,General,Numeric
+PSC,Double,-9999,8,General,Numeric
+PSC Fill,Double,-9999,8,General,Numeric
+PSC CO2,Double,-9999,8,General,Numeric
+Mnf Flow,Double,-9999,8,General,Numeric
+Carb Pressure1,Double,-9999,8,General,Numeric
+Fill Pressure,Double,-9999,8,General,Numeric
+Hyd Pressure1,Double,-9999,8,General,Numeric
+Hyd Pressure2,Double,-9999,8,General,Numeric
+Hyd Pressure3,Double,-9999,8,General,Numeric
+Hyd Pressure4,Double,-9999,8,General,Numeric
+Filler Level,Double,-9999,8,General,Numeric
+Filler Speed,Double,-9999,8,General,Numeric
+Temperature,Double,-9999,8,General,Numeric
+Usage cont,Double,-9999,8,General,Numeric
+Carb Flow,Double,-9999,8,General,Numeric
+Density,Double,-9999,8,General,Numeric
+MFR,Double,-9999,8,General,Numeric
+Balling,Double,-9999,8,General,Numeric
+Pressure Vacuum,Double,-9999,8,General,Numeric
+PH,Double,-9999,8,General,Numeric
+Oxygen Filler,Double,-9999,8,General,Numeric
+Bowl Setpoint,Double,-9999,8,General,Numeric
+Pressure Setpoint,Double,-9999,8,General,Numeric
+Air Pressurer,Double,-9999,8,General,Numeric
+Alch Rel,Double,-9999,8,General,Numeric
+Carb Rel,Double,-9999,8,General,Numeric
+Balling Lvl,Double,-9999,8,General,Numeric
+sample,Double,-999999998,8,General,Numeric
