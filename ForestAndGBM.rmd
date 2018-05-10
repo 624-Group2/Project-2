@@ -46,12 +46,6 @@ set.seed(1)
 res <- tuneRF(x = x, y = train$PH, ntreeTry = 500, doBest = TRUE)
 print(res)
 ```
-predictDF <- data.frame(predicted = predictRF, actual = test$PH)
-predictDF$Delta <-  predictDF$actual - predictDF$predicted
-predictDF$MAPE <- abs(predictDF$Delta)/predictDF$actual
-predictDF$SqErr <- (predictDF$predicted - predictDF$actual)^2
-mean(predictDF$SqErr)
-#predicted= predict(fit,x_test)
 Trees without test
 
 Grid Search
