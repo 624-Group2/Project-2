@@ -1,0 +1,188 @@
+---
+title: 'Group#2 Final'
+author: "Group 2"
+date: "4/30/2018"
+output:
+  html_document: default
+  pdf_document:
+    latex_engine: lualatex
+  word_document: default
+---
+
+#Introduction
+Our project team has obtained a data set containing 2,571 observations with each observation representing a batch of beverages that were produced. Variables included in the data set provide information on the manufacturing process that resulted in the creation of each batch. It is our task to use the 32 predictor variables to develop a model which can be used to predict the PH level in a batch. We have been provided with a training and test set.
+
+The objective is to build multiple models on the training data and then we will then run analysis to determine which model performed best. 
+
+##Team Members (alphabetical)
+
+- Brian Kreis
+- Bin Lin
+- Chris Martin
+- Asher Myers
+
+
+```{r libraries, echo=FALSE, message=FALSE, warning=FALSE}
+library(psych)
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(DataExplorer)
+library(knitr)
+library(GGally)
+library(missForest)
+library(Hmisc)
+
+
+
+```
+#Dataset
+For reproducibility of the results, the data was loaded to and accessed from a Github repository. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data1 <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/StudentData.csv", header=TRUE, sep=",")
+
+
+```
+
+#Data Exploration and Statistic Measures
+The purpose of the data exploration and statistic measures phase is to understand the data to determine how to process the dataset for modelling. 
+
+##Missing and Zero Values
+
+
+
+```{r miss, echo=FALSE, message=FALSE, warning=FALSE}
+
+plot_missing(data1, title="Manufacturing Data - Missing Values (%)")
+kable(sapply(data1, FUN = function(x) sum(is.na(x))))
+
+data1 %>%
+  group_by(Brand.Code) %>%
+  summarise_all(funs(sum(is.na(.))))
+
+table(data1$Brand.Code)
+```
+  
+  
+  
+We have a number of missing values. Presumably, because we have identified NA values across various brands, both named and unnamed, we would expect that the NA values are not informative. In other words, if information for a particular brand is usually recorded, we would expect failure to record information to be the result of an error and not a typical process change for a particular brand. As our knowledge of the production process itself is limited, we will rely on your subject matter expertise to let us know if this presumption is incorrect. 
+
+MFR stands out as a variable with a significant number of missing values; however, the percentage of missing values is still low enough where imputation is not unreasonable. We will likely find it necessary to drop the few observations that have an NA value for the response variable. 
+  
+  
+  
+##Descriptive Statistics and Data Exploration
+
+Descriptive statistics was performed for all predictor and response variables to explore the data. 
+
+```{r desc, echo=FALSE, message=FALSE, warning=FALSE}
+
+#Use Describe Package to calculate Descriptive Statistic
+(CC_des <- describe(data1, na.rm=TRUE, interp=FALSE, skew=TRUE, ranges=TRUE, trim=.1, type=3, check=TRUE, fast=FALSE, quant=c(.1,.25,.75,.90), IQR=TRUE))
+
+
+```
+
+  
+  
+We have siginificant skewness in a number of variables, and, depending on our choice of regression technique may require transformation.   
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=10, fig.width=10 }
+vis1 <- data1 %>% select(-PH -Brand.Code)
+
+par(mfrow=(c(1,1)))
+ggplot(stack(vis1), aes(values, fill=ind))+
+  facet_wrap(~ind, scales = "free") + 
+  geom_histogram() +
+  theme_pander()+
+  theme(legend.position="none")
+
+
+```
+
+
+We have a varying mix of distributions for the different data points. For example,
+ - Discrete: The variable Pressure.Setpoint appears to represent a categorical setting ranging from 44 to 52; however, we do not know at first glance if our training set contains all possible values that we might see in the test set or in general practice.   
+- Normal Continuous: Carb.Temp appears to be normally distributed.
+- Multi Modal data: Density appears to have a large number of values around 1 and another large concentration of values around 1.5.
+
+```{r box, echo=FALSE, message=FALSE, warning=FALSE, fig.height=10, fig.width=10 }
+
+
+ggplot(stack(vis1), aes(x = ind, y = values, fill=ind))+
+  facet_wrap(~ind, scales = "free") + 
+  geom_boxplot() +
+  theme_pander() +
+  theme(legend.position="none")
+```
+
+
+Ther boxplots above demonstrate the skewness of a number of variables as we have discussed.
+
+##Correlation
+
+The tables below represent correlation between response and predictor variables. There is high collinearity among certain variables. For instance in Density and Alch.Rel. This is also true of Alch.Res and Brand D.
+
+```{r correlation, echo=FALSE, message=FALSE, warning=FALSE, fig.height=8, fig.width=10}
+ggcorr(data1, method = "pairwise", label=TRUE, nbreaks=6)
+
+
+```
+
+
+Below is a look at the unique values for each variable. As mentioned, it appears that some of these variables represent various non continuous settings. 
+
+```{r unique vals, echo=FALSE, message=FALSE, warning=FALSE, fig.height=10, fig.width=10 }
+apply(data1, 2, function(x)length(unique(x)))
+```
+
+##Data Manipulation
+
+
+
+##Handling Missing Values
+```{r}
+missingPH <- which(is.na(data1$PH))
+data1 <- data1[-missingPH, ]
+
+
+##For Windows to run in parallel
+library(parallel)
+library(doParallel)
+
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+set.seed(123)
+dfImputed <- missForest(data1, parallelize = 'forests')
+  
+write.csv(dfImputed$ximp, "StudentDataImputedMF")
+
+#turn off parallel processing
+stopCluster(cluster)
+#resume use of the sequential backend
+registerDoSEQ()
+
+imputed <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/StudentDataImputedMF")
+imputed <- imputed %>% select(-X)
+sum(is.na(imputed))
+
+
+```
+
+
+# Model 1
+
+##Transformations
+
+```{r}
+
+```
+
+
+
+  
+https://www.analyticsvidhya.com/blog/2016/03/tutorial-powerful-packages-imputing-missing-values/
+
