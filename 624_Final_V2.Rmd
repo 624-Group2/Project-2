@@ -147,28 +147,40 @@ apply(data1, 2, function(x)length(unique(x)))
 missingPH <- which(is.na(data1$PH))
 data1 <- data1[-missingPH, ]
 
+##The following will impute the data. For efficiency the data sets can be loaded from github below.
+# ##For Windows to run in parallel
+# library(parallel)
+# library(doParallel)
+# 
+# cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+# registerDoParallel(cluster)
+# 
+# #impute missing training data
+# set.seed(123)
+# dfImputed <- missForest(data1, parallelize = 'forests')
+# write.csv(dfImputed$ximp, "StudentDataImputedMF")
+# 
+# #impute missing test data
+# set.seed(123)
+# toPred <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/StudentEvaluation-%20TO%20PREDICT.csv")
+# predImputed <- missForest(toPred, parallelize = 'forests')
+# write.csv(predImputed$ximp, "PredictImputedMF")
+# 
+# 
+# #turn off parallel processing
+# stopCluster(cluster)
+# #resume use of the sequential backend
+# registerDoSEQ()
 
-##For Windows to run in parallel
-library(parallel)
-library(doParallel)
-
-cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
-registerDoParallel(cluster)
-
-set.seed(123)
-dfImputed <- missForest(data1, parallelize = 'forests')
-  
-write.csv(dfImputed$ximp, "StudentDataImputedMF")
-
-#turn off parallel processing
-stopCluster(cluster)
-#resume use of the sequential backend
-registerDoSEQ()
-
+#read imputed train set
 imputed <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/StudentDataImputedMF")
 imputed <- imputed %>% select(-X)
 sum(is.na(imputed))
 
+#read imputed test set
+predictImp <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/PredictImputedMF")
+predictImp <- predictImp %>% select(-X)
+sum(is.na(predictImp))
 
 ```
 
