@@ -1,0 +1,289 @@
+```{r}
+df <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/StudentData.csv")
+#View(df)
+
+dim(df) # 2571 rows, 33 columns
+sum(complete.cases(df)) # 2129 complete rows, 82.8%; 442 rows with missing data
+#However, ignoring missing variables is not an option, because the test set has missing variables too, and those *must* be predicted.
+
+library(missForest)
+
+
+# Remove entries from df with no PH entry, of which there are 4
+missingPH <- which(is.na(df$PH))
+df <- df[-missingPH, ]
+
+data <- missForest(df)
+
+#dfImputed$OOBerror
+#     NRMSE        PFC 
+#0.09302403 0.00000000 
+
+# Discussion of different imputation packages:
+# https://www.analyticsvidhya.com/blog/2016/03/tutorial-powerful-packages-imputing-missing-values/
+
+impute_arg <- aregImpute(~names(df), data = df, n.impute = 5)
+
+
+```
+
+```
+
+Trees
+```{r}
+library(randomForest)
+
+# Take 80% of data as training
+rownums <- sample(1:nrow(data), round(nrow(data)*0.8))
+train <- data[rownums, ]
+test <- data[-rownums, ]
+
+x <- train
+x$PH <- NULL
+
+# Get Best mTry parameter = 20
+set.seed(1)
+res <- tuneRF(x = x, y = train$PH, ntreeTry = 500, doBest = TRUE)
+print(res)
+```
+predictDF <- data.frame(predicted = predictRF, actual = test$PH)
+predictDF$Delta <-  predictDF$actual - predictDF$predicted
+predictDF$MAPE <- abs(predictDF$Delta)/predictDF$actual
+predictDF$SqErr <- (predictDF$predicted - predictDF$actual)^2
+mean(predictDF$SqErr)
+#predicted= predict(fit,x_test)
+Trees without test
+
+Grid Search
+```{r}
+# Establish a list of possible values for mtry, nodesize and sampsize
+mtry <- 20 #From doBest above; alternately, can use: seq(4, ncol(x) * 0.8, 2)
+nodesize <- seq(4, 6, 1) # Originally seq(3,8,2), which returned value of 5 as optimal
+sampsize <- 2054 # 80% more effective than 70%: round(nrow(x) * c(0.7, 0.8))
+
+# Create a data frame containing all combinations 
+hyper_grid <- expand.grid(mtry = mtry, nodesize = nodesize, sampsize = sampsize)
+
+# Create an empty vector to store OOB error values
+var_exp <- c()
+
+# Write a loop over the rows of hyper_grid to train the grid of models
+for (i in 1:nrow(hyper_grid)) {
+
+    # Train a Random Forest model
+    model <- randomForest(formula = train$PH ~ ., 
+                          data = x,
+                          mtry = mtry,
+                          nodesize = hyper_grid$nodesize[i],
+                          sampsize = sampsize)
+                          
+    # Store OOB error for the model                      
+    var_exp[i] <- model$rsq[500]
+}
+
+# Identify optimal set of hyperparmeters based on OOB error
+opt_i <- which.max(var_exp)
+print(hyper_grid[opt_i,]) 
+
+# Results
+mtry = 20
+nodesize = 5
+sampsize = 2054
+
+# Create model off training set
+modelRF <- randomForest(formula = train$PH ~ ., 
+                      data = x,
+                      mtry = mtry,
+                      nodesize = nodesize,
+                      sampsize = sampsize)
+modelRF
+summary(modelRF)
+
+
+plot(modelRF, main = "Error vs Number of Trees")
+
+predictRF <- predict(object = modelRF, 
+                     newdata = xTest,
+                     type = "response")
+
+predDF <- data.frame(predRF=predictRF, actual = test$PH)
+predDF$SE.RF <- (predDF$actual - predDF$predRF)^2
+RMSE.RF <- sqrt(mean(predDF$SE.RF)) # 0.16
+```
+
+GBM
+
+```{r}
+install.packages("gbm")
+library(gbm)
+set.seed(10)
+modelGBM <- gbm(formula = train$PH~., 
+                data = x,
+                distribution = "gaussian", # hist(data$PH) is approx. normal
+                n.trees = 10000)
+modelGBM
+summary(modelGBM)
+
+# Predict test set values and add to predictions dataframe
+predDF$predGBM <- predict(object = modelGBM, 
+                  newdata = test,
+                  n.trees = 10000,
+                  type = "response")
+
+predDF$SE.GBM <- (predDF$actual - predDF$predGBM)^2
+RMSE.GBM <- sqrt(mean(predDF$SE.GBM)) 
+
+# Train a CV GBM model
+set.seed(1)
+PH_model_cv <- gbm(formula = train$PH ~ ., 
+                       distribution = "gaussian", 
+                       data = x,
+                       n.trees = 25000,
+                       cv.folds = 4)
+
+
+
+# Train a CV GBM model
+set.seed(1)
+PH_model_cv <- gbm(formula = train$PH ~ ., 
+                       distribution = "gaussian", 
+                       data = x,
+                       n.trees = 92669,
+                       cv.folds = 4)
+
+
+# Optimal ntree estimate based on CV = 92669
+ntree_opt_cv <- gbm.perf(object = PH_model_cv, 
+                         method = "cv")
+
+
+# Predict test set values and add to predictions dataframe
+predDF$predGBMCV <- predict(object = PH_model_cv, 
+                  newdata = test,
+                  n.trees = 100000,
+                  type = "response")
+
+predDF$SE.GBMCV <- (predDF$actual - predDF$predGBMCV)^2
+
+
+
+RMSE.GBMCV <- sqrt(mean(predDF$SE.GBMCV)) # 0.1305506
+
+```
+
+GBM model is best, with 
+
+
+```{r}
+# Create folds for 10-fold cross validation
+#install.packages("caret")
+library(caret)
+set.seed(10)
+folds <- createFolds(data$PH, k = 10, list = TRUE, returnTrain = FALSE)
+compare <- data.frame(GBM= c(rep(0,10)), RF = c(rep(0,10)))
+
+for (i in 1:10) {
+  train <- data[-folds[[i]], ]
+  test <- data[folds[[i]], ]
+  x <- train
+  x$PH <- NULL
+  
+  modelRFtrial <- randomForest(formula = train$PH ~ ., 
+                      data = x,
+                      mtry = mtry,
+                      nodesize = nodesize,
+                      sampsize = round(dim(data)[1]*0.8))
+  
+  predRFtrial <- predict(object = modelRFtrial, 
+                     newdata = test,
+                     type = "response")
+  
+  SE.RF <- (test$PH - predRFtrial)^2
+  compare$RF[i] <-  sqrt(mean(SE.RF)) 
+  
+  modelGBMtrial <- gbm(formula = train$PH~., 
+                data = x,
+                distribution = "gaussian", # hist(data$PH) is approx. normal
+                n.trees = 10000)
+  
+  predGBMtrial<- predict(object = modelGBMtrial, 
+                  newdata = test,
+                  n.trees = 10000,
+                  type = "response")
+  
+  SE.GBM <- (test$PH - predGBMtrial)^2
+  compare$GBM[i] <- sqrt(mean(SE.GBM)) # 0.124096
+}
+```
+
+Results of code above:
+mean: 0.13, 0.094
+         GBM         RF
+1  0.1352132 0.09394733
+2  0.1170482 0.08612228
+3  0.1313362 0.10469613
+4  0.1295329 0.09243769
+5  0.1378603 0.10746924
+6  0.1374226 0.09285209
+7  0.1361733 0.09546542
+8  0.1289868 0.09368438
+9  0.1294715 0.08596146
+10 0.1243248 0.08987080
+
+
+Cross fold validation on dataframe with complete rows only
+```{r}
+dfComplete <- df[complete.cases(df),]
+# Create folds for 10-fold cross validation
+#install.packages("caret")
+library(caret)
+set.seed(10)
+folds <- createFolds(dfComplete$PH, k = 10, list = TRUE, returnTrain = FALSE)
+compare <- data.frame(GBM= c(rep(0,10)), RF = c(rep(0,10)))
+
+for (i in 1:10) {
+  train <- dfComplete[-folds[[i]], ]
+  test <- dfComplete[folds[[i]], ]
+  x <- train
+  x$PH <- NULL
+  
+  modelRFtrial <- randomForest(formula = train$PH ~ ., 
+                      data = x,
+                      mtry = mtry,
+                      nodesize = nodesize,
+                      sampsize = round(dim(dfComplete)[1]*0.8))
+  
+  predRFtrial <- predict(object = modelRFtrial, 
+                     newdata = test,
+                     type = "response")
+  
+  SE.RF <- (test$PH - predRFtrial)^2
+  compare$RF[i] <-  sqrt(mean(SE.RF)) 
+  
+  modelGBMtrial <- gbm(formula = train$PH~., 
+                data = x,
+                distribution = "gaussian", # hist(data$PH) is approx. normal
+                n.trees = 10000)
+  
+  predGBMtrial<- predict(object = modelGBMtrial, 
+                  newdata = test,
+                  n.trees = 10000,
+                  type = "response")
+  
+  SE.GBM <- (test$PH - predGBMtrial)^2
+  compare$GBM[i] <- sqrt(mean(SE.GBM)) # 0.124096
+}
+```
+
+mean:0.1271896,  0.09184544
+         GBM         RF
+1  0.1445530 0.10768309
+2  0.1297139 0.10108338
+3  0.1185121 0.07825879
+4  0.1259693 0.08988824
+5  0.1330228 0.09740884
+6  0.1156976 0.08106758
+7  0.1330868 0.08759660
+8  0.1331516 0.10334535
+9  0.1168589 0.08447868
+10 0.1213302 0.08764383
