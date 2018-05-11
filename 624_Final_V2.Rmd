@@ -184,12 +184,25 @@ sum(is.na(predictImp))
 
 ```
 
+#Test & Training Sets
+Prior to testing our models on the actual prediction data set, it is prudent to evaluate our models against data where the response is known, so our predictions can be compared. 
 
-# Model 1
+```{r}
+smp <- floor(0.70 * nrow(imputed))
+
+set.seed(123)
+train_index <- sample(seq_len(nrow(imputed)), size = smp, replace = FALSE)
+
+train_set <- imputed[train_index, ]
+validation_set <- imputed[-train_index, ]
+
+```
+
+
+# Model Name
 
 ##Transformations
 
-```{r}
 
 ```
 
