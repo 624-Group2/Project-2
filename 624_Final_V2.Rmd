@@ -34,9 +34,6 @@ library(missForest)
 library(Hmisc)
 library(earth)
 library(caret)
-
-
-
 ```
 #Dataset
 For reproducibility of the results, the data was loaded to and accessed from a Github repository. 
@@ -217,8 +214,67 @@ train_set <- imputed[train_index, ]
 validation_set <- imputed[-train_index, ]
 
 ```
-  
-   
+
+
+
+
+# Linear Regression
+
+Box-Cox
+Temperature, Filler.Speed, Filler.Level, Hyd.Pressure1, Hyd.Pressure2, Hyd.Pressure3, Mnf.Flow, Balling, MFR, Usage.cont, Carb.Flow, Density, Air.Pressure
+
+
+## Ordinary Linear Regression
+
+
+```{r}
+
+
+lmTune <- train(PH ~ ., data=imputed, method='lm', preProcess=c('BoxCox', 'center', 'scale'))
+lmTune$terms
+
+summary(lmTune)
+
+```
+
+
+## Partial Least Squares
+
+
+```{r}
+plsTune <- train(PH ~ ., data=imputed, method='pls', preProcess=c('BoxCox', 'center', 'scale'), tuneLength=5, trControl=ctrl)
+summary(plsTune)
+
+
+```
+
+
+## PCA
+
+
+```{r}
+
+
+```
+
+
+
+## Ridge-Regression
+
+
+
+```{r}
+ridgeGrid <- data.frame(.lambda=seq(0, 0.1, length=15))
+ridgeTune <- train(PH ~ ., data=imputed, method='ridge', preProcess=c('BoxCox', 'center', 'scale'), tuneGrid=ridgeGrid, trControl=ctrl)
+ridgeTune
+```
+
+
+
+
+
+
+
    
 # MARS
 
