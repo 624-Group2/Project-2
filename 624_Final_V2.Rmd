@@ -253,8 +253,9 @@ summary(plsTune)
 
 
 ```{r}
-
-
+set.seed(100)
+pcrTune <- pcr(PH ~ ., data = imputed, scale = TRUE, validation = "CV", trControl = ctrl, tuneLength = 20)
+validationplot(pcrTune)
 ```
 
 
