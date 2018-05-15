@@ -399,6 +399,28 @@ postResample(pred = nnetP, obs = validY$PH)
 
 
 ```
+
+
+
+###Non-Linear Regression Models. 
+##K-Nearest Neighbors
+
+The optimal model using K-Nearest Neighbors shows an RMSE of 0.1187905 and R^2 of 0.5303558 The corresponding final value used for the model was k = 7. The most important predictor is Mnf.Flow which takes about 50% of the weight followed by Bowl.Setpoint, Filler.Lever, Usage.cont Pressure.Setpoint etc. For resample data, the end result for RMSE is 0.10226937 and R^2 is 0.67633058
+
+```{r}
+set.seed(100)
+knnTune <- train(PH ~ ., data=imputed, method = "knn", preProcess = c('BoxCox', 'center', 'scale'), tuneLength = 10, trControl = ctrl)
+
+plot(varImp(knnTune), top = 10)
+plot(knnTune)
+
+knnP <- predict(knnTune, newdata = validX)
+postResample(pred = knnP, obs = validY$PH)
+```
+
+
+
+
 ```
 
 https://www.analyticsvidhya.com/blog/2016/03/tutorial-powerful-packages-imputing-missing-values/
