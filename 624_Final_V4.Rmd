@@ -1,0 +1,637 @@
+---
+title: 'Group#2 Final'
+author: "Group 2"
+date: "4/30/2018"
+output:
+  word_document: default
+  pdf_document:
+    latex_engine: lualatex
+  html_document: default
+---
+
+#Introduction
+Our project team has obtained a data set containing 2,571 observations with each observation representing a batch of beverages that were produced. Variables included in the data set provide information on the manufacturing process that resulted in the creation of each batch. It is our task to use the 32 predictor variables to develop a model which can be used to predict the PH level in a batch. We have been provided with a training and test set.
+
+The objective is to build multiple models on the training data and then we will then run analysis to determine which model performed best. 
+
+##Team Members (alphabetical)
+
+- Brian Kreis
+- Bin Lin
+- Chris Martin
+- Asher Myers
+
+
+```{r libraries, echo=FALSE, message=FALSE, warning=FALSE}
+library(psych)
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(DataExplorer)
+library(knitr)
+library(GGally)
+library(missForest)
+library(randomForest)
+library(Hmisc)
+library(earth)
+library(caret)
+
+```
+#Dataset
+For reproducibility of the results, the data was loaded to and accessed from a Github repository. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#Data to build models
+data1 <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/StudentData.csv", header=TRUE, sep=",")
+
+#Data to make predictions on 
+toPred <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/StudentEvaluation-%20TO%20PREDICT.csv")
+```
+
+#Data Exploration and Statistic Measures
+The purpose of the data exploration and statistic measures phase is to understand the data to determine how to process the dataset for modelling. 
+
+##Missing and Zero Values
+
+
+
+```{r miss, echo=FALSE, message=FALSE, warning=FALSE}
+
+plot_missing(data1, title="Manufacturing Data - Missing Values (%)")
+kable(sapply(data1, FUN = function(x) sum(is.na(x))))
+
+data1 %>%
+  group_by(Brand.Code) %>%
+  summarise_all(funs(sum(is.na(.))))
+
+table(data1$Brand.Code)
+```
+  
+  
+  
+We have a number of missing values. Presumably, because we have identified NA values across various brands, both named and unnamed, we would expect that the NA values are not informative. In other words, if information for a particular brand is usually recorded, we would expect failure to record information to be the result of an error and not a typical process change for a particular brand. As our knowledge of the production process itself is limited, we will rely on your subject matter expertise to let us know if this presumption is incorrect. 
+
+MFR stands out as a variable with a significant number of missing values; however, the percentage of missing values is still low enough where imputation is not unreasonable. We will likely find it necessary to drop the few observations that have an NA value for the response variable. 
+  
+  
+  
+##Descriptive Statistics and Data Exploration
+
+Descriptive statistics was performed for all predictor and response variables to explore the data. 
+
+```{r desc, echo=FALSE, message=FALSE, warning=FALSE}
+
+#Use Describe Package to calculate Descriptive Statistic
+(CC_des <- describe(data1, na.rm=TRUE, interp=FALSE, skew=TRUE, ranges=TRUE, trim=.1, type=3, check=TRUE, fast=FALSE, quant=c(.1,.25,.75,.90), IQR=TRUE))
+
+
+```
+
+  
+  
+We have siginificant skewness in a number of variables, and, depending on our choice of regression technique may require transformation.   
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=10, fig.width=10 }
+vis1 <- data1 %>% select(-PH -Brand.Code)
+
+par(mfrow=(c(1,1)))
+ggplot(stack(vis1), aes(values, fill=ind))+
+  facet_wrap(~ind, scales = "free") + 
+  geom_histogram() +
+  theme_pander()+
+  theme(legend.position="none")
+
+
+```
+
+
+We have a varying mix of distributions for the different data points. For example,
+ - Discrete: The variable Pressure.Setpoint appears to represent a categorical setting ranging from 44 to 52; however, we do not know at first glance if our training set contains all possible values that we might see in the test set or in general practice.   
+- Normal Continuous: Carb.Temp appears to be normally distributed.
+- Multi Modal data: Density appears to have a large number of values around 1 and another large concentration of values around 1.5.
+
+```{r box, echo=FALSE, message=FALSE, warning=FALSE, fig.height=10, fig.width=10 }
+
+
+ggplot(stack(vis1), aes(x = ind, y = values, fill=ind))+
+  facet_wrap(~ind, scales = "free") + 
+  geom_boxplot() +
+  theme_pander() +
+  theme(legend.position="none")
+```
+
+
+Ther boxplots above demonstrate the skewness of a number of variables as we have discussed.
+
+##Correlation
+
+The tables below represent correlation between response and predictor variables. There is high collinearity among certain variables. For instance in Density and Alch.Rel. This is also true of Alch.Res and Brand D.
+
+```{r correlation, echo=FALSE, message=FALSE, warning=FALSE, fig.height=8, fig.width=10}
+ggcorr(data1, method = "pairwise", label=TRUE, nbreaks=6)
+
+
+```
+
+
+Below is a look at the unique values for each variable. As mentioned, it appears that some of these variables represent various non continuous settings. 
+
+```{r unique vals, echo=FALSE, message=FALSE, warning=FALSE, fig.height=10, fig.width=10 }
+apply(data1, 2, function(x)length(unique(x)))
+```
+
+##Data Manipulation
+
+###Dummy Variables
+```{r}
+data1$A <- ifelse(data1$Brand.Code == "A", 1, 0)
+data1$B <- ifelse(data1$Brand.Code == "B", 1, 0)
+data1$C <- ifelse(data1$Brand.Code == "C", 1, 0)
+data1$D <- ifelse(data1$Brand.Code == "D", 1, 0)
+data1 <- data1 %>% select(-Brand.Code)
+
+
+toPred$A <- ifelse(toPred$Brand.Code == "A", 1, 0)
+toPred$B <- ifelse(toPred$Brand.Code == "B", 1, 0)
+toPred$C <- ifelse(toPred$Brand.Code == "C", 1, 0)
+toPred$D <- ifelse(toPred$Brand.Code == "D", 1, 0)
+toPred <- toPred %>% select(-Brand.Code)
+```
+
+
+###Handling Missing Values
+```{r}
+missingPH <- which(is.na(data1$PH))
+data1 <- data1[-missingPH, ]
+
+
+#The following will impute the data. For efficiency the data sets can be loaded from github below.
+# ##For Windows to run in parallel
+# library(parallel)
+# library(doParallel)
+# 
+# cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+# registerDoParallel(cluster)
+# 
+# #impute missing training data
+# set.seed(123)
+# dfImputed <- missForest(data1, parallelize = 'forests')
+# write.csv(dfImputed$ximp, "StudentDataImputedMF")
+# 
+# #impute missing test data
+# set.seed(123)
+# predImputed <- missForest(toPred, parallelize = 'forests')
+# write.csv(predImputed$ximp, "PredictImputedMF")
+# 
+# 
+# #turn off parallel processing
+# stopCluster(cluster)
+# #resume use of the sequential backend
+# registerDoSEQ()
+
+#read imputed train set
+imputed <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/StudentDataImputedMF")
+imputed <- imputed %>% select(-X)
+sum(is.na(imputed))
+
+#read imputed test set
+predictImp <- read.csv("https://raw.githubusercontent.com/624-Group2/Project-2/master/PredictImputedMF")
+predictImp <- predictImp %>% select(-X)
+sum(is.na(predictImp))
+
+```
+
+#Test & Training Sets
+Prior to testing our models on the actual prediction data set, it is prudent to evaluate our models against data where the response is known, so our predictions can be compared. 
+
+```{r}
+smp <- floor(0.70 * nrow(imputed))
+
+
+set.seed(123)
+train_index <- sample(seq_len(nrow(imputed)), size = smp, replace = FALSE)
+
+train_set <- imputed[train_index, ]
+validation_set <- imputed[-train_index, ]
+
+
+#Separate X(predictors) and Y(response) values for the validation set for use when necessary
+validX <- validation_set %>%  select(-PH)
+validY <- validation_set %>%  select(PH)
+```
+
+
+
+
+# Linear Regression
+
+Box-Cox
+Temperature, Filler.Speed, Filler.Level, Hyd.Pressure1, Hyd.Pressure2, Hyd.Pressure3, Mnf.Flow, Balling, MFR, Usage.cont, Carb.Flow, Density, Air.Pressure
+
+
+## Ordinary Linear Regression
+
+
+```{r}
+set.seed(123)
+lmTune <- train(PH ~ ., data=train_set, method='lm', preProcess=c('BoxCox', 'center', 'scale'))
+
+
+RMSE(pred = lmTune$finalModel$fitted.values, obs = train_set$PH)
+R2(pred = lmTune$finalModel$fitted.values, obs = train_set$PH)
+
+#Ordinary Linear Regression against holdout validation set
+linP <- predict(lmTune, newdata = validX)
+postResample(pred = linP, obs = validY$PH)[1:2]
+
+```
+
+
+## Partial Least Squares
+
+
+```{r}
+ctrl <- trainControl(method = "cv")
+
+set.seed(123)
+plsTune <- train(PH ~ ., data=train_set, method='pls', preProcess=c('BoxCox', 'center', 'scale'), tuneLength=5, trControl=ctrl)
+summary(plsTune)
+
+RMSE(pred = plsTune$finalModel$fitted.values, obs = train_set$PH)
+R2(pred = plsTune$finalModel$fitted.values, obs = train_set$PH)
+
+#PLS against holdout validation set
+plsP <- predict(plsTune, newdata = validX)
+postResample(pred = plsP, obs = validY$PH)[1:2]
+
+```
+
+
+
+## Ridge-Regression
+
+
+
+```{r}
+set.seed(100)
+ridgeGrid <- data.frame(.lambda=seq(0, 0.1, length=15))
+ridgeTune <- train(PH ~ ., data=train_set, method='ridge', preProcess=c('BoxCox', 'center', 'scale'), tuneGrid=ridgeGrid, trControl=ctrl)
+ridgeTune
+
+#Ridge Regression against holdout validation set
+ridP <- predict(ridgeTune, newdata = validX)
+postResample(pred = ridP, obs = validY$PH)[1:2]
+```
+
+
+
+# MARS
+
+
+```{r}
+library(parallel)
+library(doParallel)
+
+cluster <- makeCluster(detectCores() - 1) 
+registerDoParallel(cluster)
+
+
+trainX <- train_set %>%  select(-PH)
+trainY <- train_set %>%  select(PH)
+
+
+
+indx <- createFolds(trainY$PH, returnTrain = TRUE)
+ctrl <- trainControl(method = "cv", index = indx)
+
+set.seed(100)
+mars1 <- train(x = trainX, y = trainY$PH,
+                  method = "earth",
+                  tuneGrid = expand.grid(degree = 1:3, nprune = 1:30),
+                  trControl = ctrl)
+
+#turn off parallel processing
+stopCluster(cluster)
+#resume use of the sequential backend
+registerDoSEQ()
+
+mars1
+
+plot(mars1)
+
+
+#MARS against holdout validation set
+marsP <- predict(mars1, newdata = validX)
+postResample(pred = marsP, obs = validY$PH)[1:2]
+
+```
+
+**Support Vector Machines**
+```{r}
+
+set.seed(123)
+svmPTune <- train(x = trainX, y = trainY$PH,
+                  method = "svmRadial",
+                  preProc = c("center", "scale"),
+                  tuneLength = 14,
+                  trControl = trainControl(method = 'cv'))
+svmPTune
+plot(svmPTune, 
+     scales = list(x = list(log = 2), 
+                   between = list(x = .5, y = 1))) 
+
+
+vip <- varImp(svmPTune)
+df2 <- data.frame(vip$importance, stringsAsFactors = FALSE)
+vip
+
+#SVM against holdout validation set
+svmP <- predict(svmPTune, newdata = validX)
+postResample(pred = svmP, obs = validY$PH)[1:2]
+```
+
+**Neural Network**
+
+```{r}
+
+
+
+nnetGrid <- expand.grid(decay = c(0, 0.01, .1), 
+                        size = c(1:10), 
+                        bag = FALSE)
+
+
+set.seed(100)
+nnetTune <- train(x = trainX, y = trainY$PH,
+                  method = "avNNet",
+                  tuneGrid = nnetGrid,
+                  trControl = ctrl,
+                  preProc = c("center", "scale"),
+                  linout = TRUE,
+                  trace = FALSE,
+                  maxit = 100, 
+                  allowParallel = TRUE)
+
+#turn off parallel processing
+stopCluster(cluster)
+#resume use of the sequential backend
+registerDoSEQ()
+
+nnetTune
+
+#NNET against holdout validation set
+nnetP <- predict(nnetTune, newdata = validX)
+postResample(pred = nnetP, obs = validY$PH)[1:2]
+
+
+```
+
+
+##K-Nearest Neighbors
+
+The optimal model using K-Nearest Neighbors shows an RMSE of 0.1221 and R^2 of 0.496 The corresponding final value used for the model was k = 5. The most important predictor is Mnf.Flow which takes about 50% of the weight followed by Bowl.Setpoint, Filler.Lever, Usage.cont Pressure.Setpoint etc. For resample data, the end result for RMSE is 0.1234 and R^2 is 0.526
+
+```{r}
+set.seed(100)
+knnTune <- train(PH ~ ., data=train_set, method = "knn", preProcess = c('BoxCox', 'center', 'scale'), tuneLength = 10, trControl = ctrl)
+
+plot(varImp(knnTune), top = 10)
+plot(knnTune)
+knnTune
+
+knnP <- predict(knnTune, newdata = validX)
+postResample(pred = knnP, obs = validY$PH)
+```
+
+#Trees
+
+# Get Best mTry parameter = 36
+<!-- validX <- validation_set %>%  select(-PH) -->
+<!-- validY <- validation_set %>%  select(PH) -->
+```{r}
+set.seed(1)
+res <- tuneRF(x = train_set, y = train_set$PH, ntreeTry = 500, doBest = TRUE)
+print(res)
+```
+
+Grid Search
+```{r}
+# Establish a list of possible values for mtry, nodesize and sampsize
+mtry <- 36 #From doBest above; alternately, can use: seq(4, ncol(x) * 0.8, 2)
+nodesize <- seq(4, 6, 1) # Originally seq(3,8,2), which returned value of 5 as optimal
+sampsize <- 1796 # 80% more effective than 70%: round(nrow(x) * c(0.7, 0.8)) but 70% to match other models
+
+# Create a data frame containing all combinations 
+hyper_grid <- expand.grid(mtry = mtry, nodesize = nodesize, sampsize = sampsize)
+
+# Create an empty vector to store OOB error values
+var_exp <- c()
+
+# Write a loop over the rows of hyper_grid to train the grid of models
+for (i in 1:nrow(hyper_grid)) {
+
+    # Train a Random Forest model
+    model <- randomForest(formula = train_set$PH ~ ., 
+                          data = train_set,
+                          mtry = mtry,
+                          nodesize = hyper_grid$nodesize[i],
+                          sampsize = sampsize)
+                          
+    # Store OOB error for the model                      
+    var_exp[i] <- model$rsq[500]
+}
+
+# Identify optimal set of hyperparmeters based on OOB error
+opt_i <- which.max(var_exp)
+print(hyper_grid[opt_i,]) 
+
+# Results
+mtry = 20
+nodesize = 4
+sampsize = 1796
+
+# Create model off training set
+modelRF <- randomForest(formula = train_set$PH ~ ., 
+                      data = train_set,
+                      mtry = mtry,
+                      nodesize = nodesize,
+                      sampsize = sampsize)
+modelRF
+summary(modelRF)
+
+
+plot(modelRF, main = "Error vs Number of Trees")
+
+predictRF <- predict(object = modelRF, 
+                     newdata = validation_set,
+                     type = "response")
+
+predDF <- data.frame(predRF=predictRF, actual = validation_set$PH)
+predDF$SE.RF <- (predDF$actual - predDF$predRF)^2
+
+
+postResample(pred = predictRF, obs = validation_set$PH)[1:2]
+
+```
+
+GBM
+
+```{r}
+#install.packages("gbm")
+library(gbm)
+set.seed(10)
+modelGBM <- gbm(formula = train_set$PH~., 
+                data = train_set,
+                distribution = "gaussian", # hist(data$PH) is approx. normal
+                n.trees = 10000)
+
+modelGBM
+summary(modelGBM)
+
+
+# Predict test set values and add to predictions dataframe
+predDF$predGBM <- predict(object = modelGBM, 
+                  newdata = validation_set,
+                  n.trees = 10000,
+                  type = "response")
+
+predDF$SE.GBM <- (predDF$actual - predDF$predGBM)^2
+
+postResample(pred = predDF$predGBM, obs = validation_set$PH)[1:2]
+
+
+# Train a CV GBM model
+set.seed(1)
+PH_model_cv <- gbm(formula = train_set$PH ~ ., 
+                       distribution = "gaussian", 
+                       data = train_set,
+                       n.trees = 25000,
+                       cv.folds = 4,
+                   n.core = detectCores() - 1)
+
+PH_model_cv
+
+
+# Train a CV GBM model
+set.seed(1)
+PH_model_cv <- gbm(formula = train_set$PH ~ ., 
+                       distribution = "gaussian", 
+                       data = train_set,
+                       n.trees = 100000,
+                       cv.folds = 4,
+                   n.cores = detectCores() - 1)
+
+
+# Optimal ntree estimate based on CV = 71982
+ntree_opt_cv <- gbm.perf(object = PH_model_cv, 
+                         method = "cv")
+
+
+# Predict test set values and add to predictions dataframe
+predDF$predGBMCV <- predict(object = PH_model_cv, 
+                  newdata = validation_set,
+                  n.trees = 71982,
+                  type = "response")
+
+predDF$SE.GBMCV <- (predDF$actual - predDF$predGBMCV)^2
+
+
+postResample(pred = predDF$predGBMCV, obs = validation_set$PH)[1:2]
+
+
+```
+
+
+*From this part on likely won't run...*
+
+
+```{r}
+# Create folds for 10-fold cross validation
+#install.packages("caret")
+library(caret)
+set.seed(10)
+folds <- createFolds(data$PH, k = 10, list = TRUE, returnTrain = FALSE)
+compare <- data.frame(GBM= c(rep(0,10)), RF = c(rep(0,10)))
+
+for (i in 1:10) {
+  train <- data[-folds[[i]], ]
+  test <- data[folds[[i]], ]
+  x <- train
+  x$PH <- NULL
+  
+  modelRFtrial <- randomForest(formula = train$PH ~ ., 
+                      data = x,
+                      mtry = mtry,
+                      nodesize = nodesize,
+                      sampsize = round(dim(data)[1]*0.8))
+  
+  predRFtrial <- predict(object = modelRFtrial, 
+                     newdata = test,
+                     type = "response")
+  
+  SE.RF <- (test$PH - predRFtrial)^2
+  compare$RF[i] <-  sqrt(mean(SE.RF)) 
+  
+  modelGBMtrial <- gbm(formula = train$PH~., 
+                data = x,
+                distribution = "gaussian", # hist(data$PH) is approx. normal
+                n.trees = 10000)
+  
+  predGBMtrial<- predict(object = modelGBMtrial, 
+                  newdata = test,
+                  n.trees = 10000,
+                  type = "response")
+  
+  SE.GBM <- (test$PH - predGBMtrial)^2
+  compare$GBM[i] <- sqrt(mean(SE.GBM)) # 0.124096
+}
+```
+
+
+
+Cross fold validation on dataframe with complete rows only
+```{r}
+dfComplete <- df[complete.cases(df),]
+# Create folds for 10-fold cross validation
+#install.packages("caret")
+library(caret)
+set.seed(10)
+folds <- createFolds(dfComplete$PH, k = 10, list = TRUE, returnTrain = FALSE)
+compare <- data.frame(GBM= c(rep(0,10)), RF = c(rep(0,10)))
+
+for (i in 1:10) {
+  train <- dfComplete[-folds[[i]], ]
+  test <- dfComplete[folds[[i]], ]
+  x <- train
+  x$PH <- NULL
+  
+  modelRFtrial <- randomForest(formula = train$PH ~ ., 
+                      data = x,
+                      mtry = mtry,
+                      nodesize = nodesize,
+                      sampsize = round(dim(dfComplete)[1]*0.8))
+  
+  predRFtrial <- predict(object = modelRFtrial, 
+                     newdata = test,
+                     type = "response")
+  
+  SE.RF <- (test$PH - predRFtrial)^2
+  compare$RF[i] <-  sqrt(mean(SE.RF)) 
+  
+  modelGBMtrial <- gbm(formula = train$PH~., 
+                data = x,
+                distribution = "gaussian", # hist(data$PH) is approx. normal
+                n.trees = 10000)
+  
+  predGBMtrial<- predict(object = modelGBMtrial, 
+                  newdata = test,
+                  n.trees = 10000,
+                  type = "response")
+  
+  SE.GBM <- (test$PH - predGBMtrial)^2
+  compare$GBM[i] <- sqrt(mean(SE.GBM)) # 0.124096
+}
+```
+
+https://www.analyticsvidhya.com/blog/2016/03/tutorial-powerful-packages-imputing-missing-values/
