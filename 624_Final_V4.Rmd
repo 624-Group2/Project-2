@@ -19,7 +19,7 @@ The objective is to build multiple models on the training data and then we will 
 - Brian Kreis
 - Bin Lin
 - Chris Martin
-- Asher Myers
+- Asher Meyers
 
 
 ```{r libraries, echo=FALSE, message=FALSE, warning=FALSE}
